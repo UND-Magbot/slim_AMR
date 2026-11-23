@@ -1,0 +1,70 @@
+<!--
+  nav2 기본 트리(navigate_to_pose_w_replanning_and_recovery.xml)에서
+  복구 동작의 Spin(제자리 90도)과 BackUp(뒤로 0.30m)을 뺀 것.
+
+  ⚠ 2026-09-30 검토. Theta* 는 목표 칸이 장애물(비용 252 이상)이면 경로를
+    내지 않는다(NavFn 은 0.5m 안의 빈 칸으로 옮겨 줬다). 목표점에 사람이 서
+    있거나 벽 가까운 지점이면 계획이 실패하고, 기본 트리는 복구로 제자리
+    회전·후진을 돌아가며 한다. 캐스터 때문에 후진을 피하는 로봇이고, 사람이
+    옆에 있을 때 예고 없이 돌거나 물러나면 위험하다. 실제로 9/28 7회, 9/29
+    1회 돌았다. 복구는 지도 비우기와 기다리기만 한다.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <!--
+          경로는 목표가 바뀌었을 때, 막혔을 때, 10초가 지났을 때만 다시 그린다
+          (nav2 nav_to_pose_with_consistent_replanning_and_if_path_becomes_invalid.xml 과 같은 구성).
+          ⚠ 2026-10-02: 1초마다 다시 그리면 경로가 로봇이 있는 5cm 칸 중심에서
+            새로 시작해, 그릴 때마다 꺾이는 자리가 바뀌었다(+30/-28 -> +2/-52 -> +32/0mm).
+            로봇은 바뀐 경로를 따라 좌우로 끌렸다. 한 구간(약 10초)은 한 경로로 간다.
+        -->
+        <RateController hz="2.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <Fallback>
+              <ReactiveSequence>
+                <Inverter>
+                  <PathExpiringTimer seconds="10" path="{path}"/>
+                </Inverter>
+                <Inverter>
+                  <GlobalUpdatedGoal/>
+                </Inverter>
+                <IsPathValid path="{path}"/>
+              </ReactiveSequence>
+              <Sequence>
+                <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+                <!-- 2026-10-26 각진 꺾임을 곡선으로 (smoother_server) 넣었다가 2026-11-17 뺌.
+                     사용자: "경로에도 웬만하면 직선주행하고 싶어". 1->2 처럼 Theta* 가 거의 일직선
+                     (방향 변화 8도, 최대 2cm)으로 낸 경로를 스무더가 1.1m 휘게(39도, 5cm) 만들었다
+                     (logs/path_straight.py). 꺾이는 곳은 RPP 앞보기(0.6~1.6m)가 미리 돌며 둥글게 간다.
+                <Fallback>
+                  <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}"
+                              smoother_id="SmoothPath" max_smoothing_duration="0.5"
+                              check_for_collisions="true"/>
+                  <AlwaysSuccess/>
+                </Fallback>
+                -->
+              </Sequence>
+            </Fallback>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Wait wait_duration="3"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

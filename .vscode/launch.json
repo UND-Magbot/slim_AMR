@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug (OpenOCD + ST-LINK)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "openocd",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/UND_ARM.elf",
+            "device": "STM32H743VI",
+            "configFiles": ["interface/stlink.cfg", "target/stm32h7x.cfg"],
+            "gdbPath": "/usr/local/bin/arm-none-eabi-gdb",
+            "runToEntryPoint": "main",
+            "preLaunchTask": "Build"
+        }
+    ]
+}

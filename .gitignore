@@ -1,0 +1,26 @@
+# 빌드 산출물
+build/
+*.o
+*.d
+*.su
+*.lst
+*.elf
+*.map
+
+# 로그·녹화·코드 백업 (수백 MB, 백업은 git 이력이 대신한다)
+logs/
+
+# 사진·영상
+img/
+
+# 파이썬
+__pycache__/
+*.pyc
+
+# 수동 백업 파일
+*.bak_*
+
+# colcon 산출물 (ros2 패키지 안에 잘못 생긴 것 포함)
+install/
+log/
+.pytest_cache/

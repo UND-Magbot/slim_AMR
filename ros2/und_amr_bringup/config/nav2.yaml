@@ -1,0 +1,506 @@
+# UND_AMR nav2 설정
+#
+# 이 로봇의 특이점 세 가지를 먼저 알아야 값이 이해된다.
+#
+#  1) 지도가 두 개다.
+#     /map      slam_toolbox 가 발행. 위치추정용이라 가상벽이 없다.
+#     /map_nav  api_node 가 발행. 가상벽·지우개가 반영된 경로계획용.
+#     여기서는 반드시 /map_nav 를 쓴다. /map 을 쓰면 가상벽을 뚫고 간다.
+#
+#  2) 방위는 바퀴가 아니라 자이로에서 온다(config/ekf.yaml).
+#     그래서 odom_topic 은 /odom 이 아니라 /odometry/filtered 다.
+#
+#  3) 차체가 길다. 870 x 270 mm 이고 구동축이 정중앙이라 앞뒤로 435mm 씩이다.
+#     회전 반경이 아니라 '회전할 때 앞뒤 끝이 그리는 원' 이 제약이 된다.
+#
+# 속도는 일부러 낮게 잡았다. 첫 자율주행이므로 확인하면서 올린다.
+
+bt_navigator:
+  ros__parameters:
+    global_frame: map
+    robot_base_frame: base_footprint
+    odom_topic: /odometry/filtered
+    bt_loop_duration: 10
+    default_server_timeout: 20
+
+controller_server:
+  ros__parameters:
+    controller_frequency: 20.0
+    odom_topic: /odometry/filtered
+    # 이보다 느리면 '멈춘 것' 으로 본다. 정지 판정에만 쓰인다.
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      # 목표 근처에서 느리게 다가가는 동안 '멈췄다' 고 오판하면 안 된다.
+      # 0.5m 를 15초 안에 요구하면 마무리 접근에서 그대로 걸린다.
+      required_movement_radius: 0.10
+      movement_time_allowance: 20.0
+
+    general_goal_checker:
+      # StoppedGoalChecker 는 위치·각도에 더해 '실제로 멈췄는가' 까지 본다.
+      # SimpleGoalChecker 는 속도를 안 보므로, 회전 중에 기준 안에 들어오는
+      # 순간 도착을 선언하고 로봇은 관성으로 더 돈다. 각속도 0.6 rad/s 에서
+      # 감속 0.8 rad/s^2 이면 0.75초 동안 13도를 더 도는데, 실측에서 회전이
+      # 섞인 회차만 12~14도 틀어진 것이 정확히 이 값이었다(2026-09-14).
+      plugin: "nav2_controller::StoppedGoalChecker"
+      stateful: True
+      trans_stopped_velocity: 0.03
+      rot_stopped_velocity: 0.05
+      # 실측(2026-09-14, tools/goal_accuracy.py): 기준 150mm 일 때 오차가
+      # 126~134mm 로 촘촘히 모였다. 한계가 아니라 문턱을 넘자마자 멈춘 것이라
+      # 기준을 조이면 더 다가간다.
+      # 다만 지도 격자가 50mm 라 그보다 아래로는 의미가 없다.
+      xy_goal_tolerance: 0.05
+      # 방향은 일부러 느슨하게 둔다.
+      # RPP 는 도착하면 따라갈 앞점이 자기 발밑이 되어 조향이 갈팡질팡한다.
+      # 방향까지 여기서 맞추려 하면 목표 근처에서 좌우로 흔들리고 시간이
+      # 6초에서 36초까지 들쭉날쭉해진다(2026-09-14 실측).
+      # 위치만 여기서 맞추고, 방향은 도착 뒤 제자리 회전(Spin)으로 잡는다.
+      # ⚠ 0.20 으로 조여 봤다가 되돌렸다(2026-09-16). 조이면 nav2 가 목표
+      #   앞에서 제자리 회전을 더 하게 되고, 그만큼 캐스터가 비틀려 몸이
+      #   옆으로 밀린다 — 회전 뒤 좌우가 25mm 에서 114/161mm 로 나빠졌다.
+      #   위 9/14 기록의 경고가 맞았다. 방향은 여기서 맞추지 않는다.
+      # ⚠ 0.35 -> 3.14 (방향 무관, 2026-09-29). 0.35 여도 RPP 는 목표 5cm
+      #   안에서 목표 방향으로 제자리 회전을 한다(use_rotate_to_heading).
+      #   그 회전은 감속 없이 0.6 rad/s 로 돌다 지나치면 바로 반대로 돌아,
+      #   지연 0.7초 동안 20도 넘게 지나치며 좌우로 왔다갔다 했고, 방향을
+      #   바꾸려고 잠깐 멈춘 순간 20도 안이면 도착으로 끝났다 — 도착 후
+      #   보정이 매번 9~17도에서 시작한 것이 그 흔적이다. 사용자: "왔다갔다
+      #   싫고 한 번에 돌면서 멈춰야". 방향은 api_node 의 도착 후 보정(돌고-
+      #   멈추고-재기, 오늘 매번 1회차에 1도 안)이 맡는다.
+      yaw_goal_tolerance: 3.14
+
+    # Regulated Pure Pursuit — 차동구동에 맞고 만질 값이 적다.
+    # DWB 는 궤적을 수백 개 굴려 고르는 방식이라 값이 훨씬 많고,
+    # 이 차체처럼 길쭉하면 footprint 검사 비용도 커진다.
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      # 화면에서 바꾼다(대시보드 주행속도). 여기 값은 시작값일 뿐이고,
+      # api_node 가 저장해 둔 값을 nav2 가 뜰 때마다 다시 밀어 넣는다.
+      # 상한 0.6 은 base_node 의 max_linear_mps 와 같다.
+      desired_linear_vel: 0.25
+
+      # 전방주시거리. 순수추종은 이 거리가 차체 길이에 비해 짧으면
+      # 목표점을 지나칠 때마다 반대로 꺾어 좌우로 진동한다.
+      # 이 차체는 870mm 라 0.375m(첫 설정)로는 몸길이의 절반도 못 봤고
+      # 실제로 전진 중 좌우로 흔들렸다(2026-09-11).
+      # 몸길이 이상을 보도록 올린다. 대신 곡선을 크게 도니, 좁은 곳에서
+      # 벽에 붙어 돌면 다시 줄여야 한다.
+      lookahead_dist: 1.00
+      # ⚠ 속도 환산(use_velocity_scaled_lookahead_dist)이 켜져 있어 실제
+      #   전방주시거리는 clamp(v*lookahead_time, min, max) 다. 0.40 m/s
+      #   아래에서는 항상 이 하한으로 잘리므로, 위 lookahead_dist 1.00 은
+      #   지금 쓰는 속도 대역(0.25)에서 한 번도 쓰이지 않는다.
+      #   즉 곡선의 크기를 정하는 값은 사실상 이 하한 하나다.
+      #   0.80 -> 0.60 으로 조인다(반경 25% 감소). 9/11 에 흔들렸던 값은
+      #   0.375 이므로 아직 60% 여유가 있고, 아래 곡률 감속 문턱
+      #   (regulated_linear_scaling_min_radius 0.60)과 같아져 급한 곡선에서
+      #   속도가 함께 떨어진다 — 차체가 길어 뒤끝이 크게 도는 것을 억제한다.
+      # ⚠ 0.80 을 시험했다가 0.60 으로 되돌림(2026-09-29). 자잘한 좌우 조향은
+      #   줄었지만(지령 좌우 바뀜 1~7 -> 0~2번) 한 번 흐를 때 옆으로 더 멀리
+      #   갔다(옆 25~39 -> 21~54mm). 캐스터 교체 뒤 다시 비교한다.
+      min_lookahead_dist: 0.60
+      max_lookahead_dist: 1.60
+      lookahead_time: 2.0
+      use_velocity_scaled_lookahead_dist: true
+      transform_tolerance: 0.2
+
+      # 곡률이 크면 속도를 줄인다. 차체가 길어 급한 회전에서 뒤끝이 크게 돈다.
+      use_regulated_linear_velocity_scaling: true
+      regulated_linear_scaling_min_radius: 0.60
+      regulated_linear_scaling_min_speed: 0.10
+
+      # 목표에 다가갈수록 속도를 줄인다. 빠르게 지나치면 기준 안에 못 선다.
+      #
+      # ⚠ 너무 낮추면 오히려 흔들린다. 드라이브가 정수 rpm 만 받는데
+      #   0.03 m/s 는 3.36 rpm 이라 정수로 자르면 10.7% 가 날아가고,
+      #   좌우가 1 rpm 만 어긋나도 2.9 도/s 로 돈다. 0.08 m/s 는 8.96 rpm
+      #   이라 양자화 오차가 0.5% 로 떨어진다(2026-09-14 실측으로 확인).
+      #   감속 구간도 0.8m 는 너무 길어 그 27초 내내 흔들렸다.
+      min_approach_linear_velocity: 0.08
+      approach_velocity_scaling_dist: 0.45
+
+      # 장애물이 가까우면 속도를 줄인다.
+      use_cost_regulated_linear_velocity_scaling: true
+      cost_scaling_dist: 0.60
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 2.0   # inflation_layer 와 반드시 같게
+
+      # 제자리 회전으로 경로 방향을 먼저 맞춘다. 이 로봇은 캐스터 4개라
+      # 제자리 회전에서 바퀴가 크게 미끄러진다(8/25: 같은 지령에 998/1183도).
+      # 그래서 문턱을 넉넉히 두어 어지간하면 곡선으로 풀도록 한다.
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.90      # 약 52도
+      rotate_to_heading_angular_vel: 0.6
+      max_angular_accel: 1.5
+
+      allow_reversing: false                 # 후진은 캐스터가 뒤집히며 불안정
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.5
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    # ⚠ NavFn -> Theta* (2026-09-30). NavFn 은 격자를 상하좌우로만 퍼져 나가며
+    #   계산해 대각선 경로를 활처럼 휘게 그렸다. 지점 1<->2(방향 -43/137도, 3m)
+    #   경로가 직선에서 131~204mm 벗어나고 출발 방향이 11~18도 옆이었다 —
+    #   넘겨받은 RPP 가 곧바로 꺾어 "빨라지며 한쪽으로 감"(사용자 지적).
+    #   여유 구역 비용을 빨리 줄여도(2.0 -> 5.0) 그대로라 비용 탓이 아니었다.
+    #   Theta* 는 격자에 묶이지 않고 가리는 것이 없으면 직선을 긋는다.
+    #   NavFn 의 tolerance(목표가 막혔으면 0.5m 안 빈 곳으로)는 없다.
+    GridBased:
+      plugin: "nav2_theta_star_planner/ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      # ⚠ 2.0 -> 0.0 (2026-10-02). 2.0 이면 열린 곳에서도 비용(장애물 근처)을 피해
+      #   꺾어, 2.4m 경로가 +16 / -24mm 로 휜 S자였고 1초마다 다시 그릴 때 꺾는 자리가
+      #   바뀌었다(+30/-28 -> +2/-52 -> +32/0mm). 로봇은 그 S자를 그대로 따라가 직선
+      #   좌우 폭이 2~3cm 였다. 0 이면 가리는 것이 없을 때 한 줄 직선(±2mm)이고,
+      #   같은 왕복에서 출발 1.5m 좌우 오차 28 -> 13mm, 방향 변화 5.9 -> 4.0도.
+      #   0.2 도 ±25mm 로 꺾였다. 대가: 장애물 근처 비용을 덜 피해 벽·렉 쪽으로 붙을
+      #   수 있다(치명·외접 칸은 여전히 못 지나가고, RPP 가 비용 높은 곳에서 감속).
+      # ⚠ 2026-11-16 0.0 -> 0.5: 위 전역 팽창을 장애물 0.5m 안으로 좁힌 뒤 다시 켬. 실시간 비교:
+      #   렉1 경로 장애물까지 최소 0.41 -> 0.50m, test2(78cm 통로) 0.33 -> 0.38m, 길이는 직선과 같음.
+      w_traversal_cost: 0.5
+      allow_unknown: false      # 미지 영역으로 경로를 내지 않는다.
+                                # /map_nav 는 저장된 PGM 이라 가장자리에
+                                # 미지가 남아 있고, 그리로 보내면 안 된다.
+
+behavior_server:
+  ros__parameters:
+    local_costmap_topic: local_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_costmap_topic: global_costmap/costmap_raw
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    global_frame: odom
+    robot_base_frame: base_footprint
+    transform_tolerance: 0.2
+    simulate_ahead_time: 2.0
+    # 도착 후 방향 맞추기에 쓰인다. 정밀도가 목적이라 느리게 돈다.
+    # 다만 min 을 더 낮추면 안 된다 - 제자리 회전에서 바퀴 지령이
+    # rpm = w*sep/2 * 60/(2*pi*r) 이라 0.2 rad/s 가 겨우 2 rpm 이고,
+    # 그 아래로는 정수 양자화에 뭉개진다.
+    max_rotational_vel: 0.4
+    min_rotational_vel: 0.2
+    rotational_acc_lim: 0.8
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_footprint
+      transform_tolerance: 0.3
+      # 차체 873.5 x 328.8 (2026-10-23 변경), 구동축이 정중앙이라 앞뒤 437mm 씩.
+      # (예전 870 x 270: [[0.435, 0.135], ...])
+      # ⚠ 2026-11-16 반지름 0.45m 원(11/13)은 되돌림: 폭 91cm 보다 좁은 통로에는 경로가 아예 안 나와
+      #   test2(폭 약 78cm 통로, 한쪽 벽 0.28m)로 "시작/목표가 장애물 안" 실패. 원래 직사각형 + 여유 0.05.
+      footprint: "[[0.437, 0.165], [0.437, -0.165], [-0.437, -0.165], [-0.437, 0.165]]"
+      # ⚠ 2026-10-26: 새 지도로 첫 주행에서 우회전 때 벽에 바짝 붙어 RPP 가 '앞에 충돌'
+      #   175번 -> 진행 없음으로 실패(사용자: "우회전 할 때 너무 바짝 붙어서"). 경로 계획은
+      #   w_traversal_cost 0 이라 모서리 안쪽에 붙고(10/02 S자 대책), 차체 폭이 270 -> 329mm
+      #   로 늘어 한쪽 3cm 씩 여유가 줄었다. 비용을 올리면 S자가 돌아오므로(0.2 도 ±25mm),
+      #   '넘으면 안 되는 선' 만 넓힌다 — 전역 지도(경로 계획)에서만 차체를 5cm 크게 본다.
+      #   Theta* 는 비용 252 이상 칸을 안 지나간다. 지역 지도(RPP 충돌 판단)는 실제 크기.
+      #   대가: 벽에 아주 가까운 목표점은 '시작/목표가 장애물 안' 으로 거절될 수 있다.
+      # 2026-11-13 0.05 -> 0.10 -> 0.0: 위 원(0.45m)으로 바꾸며 여유는 원 반지름에 넣었다.
+      # ⚠ 2026-11-16 0.05 -> 0.02: 운영 환경 대부분이 좁다(사용자: 한쪽 약 5cm 남는 곳도 다녀야 함).
+      #   5cm 여유면 양쪽 5cm 통로가 '장애물 안' 이 된다. 모서리 붙음은 팽창 비용(w_traversal_cost)으로 막는다.
+      footprint_padding: 0.02
+      resolution: 0.05
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        # ⚠ 여기가 핵심이다. /map 이 아니라 /map_nav 다.
+        map_topic: /map_nav
+        map_subscribe_transient_local: True
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        # ⚠ 2026-10-30 카메라는 뺐다 (아래 local_costmap camera_layer 설명). 경로 계획은 라이다만.
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 6.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # 낮을수록 장애물에서 멀어질수록 비용이 천천히 떨어진다 = 더 크게 피한다.
+        # ⚠ 2026-11-16 2.0 -> 10, 반경 0.70 -> 0.55 (아래 w_traversal_cost 0.5 와 함께): 비용을 장애물
+        #   0.5m 안에만 두고 빠르게 줄인다. 넓은 곳은 비용 0 이라 경로가 직선 그대로(10/02 S자 방지),
+        #   장애물 근처만 조금 피해 모서리를 끼고 꺾을 때 길쭉한 차체가 붙지 않게 한다.
+        cost_scaling_factor: 10.0
+        # ⚠ 차체 외접 반경이 sqrt(0.435^2+0.135^2)=0.455m 다. 팽창 반경을
+        #   그보다 작게 두면(처음 0.45) 차체 자신도 못 덮어 계획이 장애물을
+        #   스치듯 지난다. 실제로 지도에 없는 파레트 옆을 바짝 붙어 지났다
+        #   (2026-09-11). 외접 반경 + 여유 0.245m 로 둔다.
+        #   2026-10-26 차체 873.5 x 328.8 -> 외접 반경 0.467m, 여유 0.233m (값 그대로).
+        #   이것은 금지가 아니라 비용이므로 좁은 통로도 지날 수 있다.
+        inflation_radius: 0.55
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_footprint
+      transform_tolerance: 0.3
+      rolling_window: true
+      width: 4
+      height: 4
+      # ⚠ 2026-11-16 0.05 -> 0.025: 좁은 곳(한쪽 5cm)에서 RPP 충돌 검사가 칸 크기(±2.5cm)에 뭉개지지 않게.
+      #   실행 중에는 안 바뀐다 — bringup 재시작 때 반영. (전역 지도는 /map_nav 해상도 0.05 를 따른다)
+      resolution: 0.025
+      footprint: "[[0.437, 0.165], [0.437, -0.165], [-0.437, -0.165], [-0.437, 0.165]]"
+      # ⚠ 2026-11-11 camera_layer 는 뺐다 — 카메라는 collision_monitor 로 간다(아래).
+      #   주행 지도에 넣으면 RPP 가 '앞에 충돌'로 목표를 포기해 손을 잠깐 대도 이동이
+      #   '실패'가 됐고, 지도 갱신(5Hz)을 거쳐 반응이 느렸다(사용자: "반응속도가 너무 느려").
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 6.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 4.0
+
+      # 카메라 장애물 = 보조 확인 (camera_obstacles 노드, 2026-10-27 / 10-30).
+      # 라이다 스캔면(201.5mm) 밖의 낮은 · 높은 물건 중 라이다가 못 보는 것, 카메라 1m 안만.
+      # ⚠ 2026-10-30: 처음엔 2m 로 두 지도 obstacle_layer 에 넣었더니 렉1 윗판(0.6~0.8m)·
+      #   A 뒤 가구(0.4~0.6m) 같은 진짜 물체가 경로 옆 1~2m 에 찍혀, 경로 계획 지도에
+      #   남고 팽창 0.7m 로 경로가 휘었다 / B 지점이 막혔다(사용자: "이상한 장애물 점때문에
+      #   경로가 이상해 지고있어", "카메라는 그저 보조확인임 가까운 물체각 라이다가
+      #   감지못하는 위치의 장애물만"). 그래서
+      #   - 경로 계획(global)에서는 뺐다. 주행 지도(local)에만 넣어 RPP 충돌 확인이 앞을
+      #     막는 물건에 선다.
+      #   - 따로 층이다. 같은 층이면 라이다 빔이 그 위를 지나가며 카메라 표시를 지우고
+      #     카메라는 라이다 표시를 지운다. 따로면 각자 제 것만 지운다.
+      # inf = 깊이는 보였는데 장애물 없음 -> 그 방향을 비운다 (이 층에서만).
+      # 카메라가 끊기면 이 층만 비고 라이다로 계속 간다(expected_update_rate 0).
+      camera_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        # 2026-11-11 전장 재세팅: 넥 위 아래 카메라(D435F, 0.955m, 65.6도 숙임)로 옮김.
+        #   URDF 를 실측으로 고치기 전에는 바닥이 로봇 앞 0.17m 장애물로 176칸 중 150칸
+        #   찍혀 잠시 껐다. 고친 뒤 빈 바닥 0칸, 넥 앞면은 camera_obstacles 가 뺀다.
+        enabled: True
+        observation_sources: camera
+        camera:
+          topic: /camera/obstacle_scan
+          data_type: "LaserScan"
+          marking: True
+          clearing: True
+          inf_is_valid: True
+          max_obstacle_height: 2.0
+          obstacle_max_range: 1.0
+          raytrace_max_range: 1.0
+          raytrace_min_range: 0.0
+          obstacle_min_range: 0.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 2.0
+        inflation_radius: 0.70
+
+# 안전 계층. 컨트롤러와 '따로' 도는 것이 핵심이다.
+#
+# 지금까지는 컨트롤러가 스스로 판단해 섰다. 그러면 컨트롤러가 멈추거나
+# 느려지면 아무도 못 막는다. 오늘 실제로 그런 상황이 있었다 -
+# 라이다가 죽어 위치추정이 얼어붙었는데 nav2 는 그걸 몰랐다(2026-09-11).
+#
+# 속도 지령이 반드시 여기를 거쳐 나가게 배선한다.
+#   controller -> cmd_vel_nav -> smoother -> cmd_vel_smoothed
+#                                         -> collision_monitor -> cmd_vel
+collision_monitor:
+  ros__parameters:
+    base_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "cmd_vel_smoothed"
+    cmd_vel_out_topic: "cmd_vel"
+    transform_tolerance: 0.3
+    # 스캔이 이 시간 넘게 안 오면 그 관측원을 죽은 것으로 본다.
+    # 라이다가 끊기는 일이 실제로 있었으므로 짧게 잡는다(스캔 15Hz).
+    source_timeout: 0.5
+    base_shift_correction: True
+    stop_pub_timeout: 2.0
+    polygons: ["FootprintApproach", "PolygonStop"]
+
+    # 속도에 따라 스스로 커지는 안전거리.
+    #
+    # 아래 두 다각형은 크기가 고정이라 속도가 달라지면 맞지 않는다. 0.6 m/s
+    # 에서 서려면 반응 0.3 초(0.18 m) + 감속 0.6 m/s^2(0.30 m) = 0.48 m 가
+    # 필요해 정지 구역 0.70 m 로는 늦고, 그렇다고 0.92 m 로 키우면 느리게
+    # 갈 때 멀쩡한 통로에서도 선다. 다각형 점은 실행 중에 못 바꾼다
+    # (collision_monitor 가 파라미터를 선언조차 안 한다 — 2026-09-14 확인).
+    #
+    # approach 는 차체 형상을 지금 속도 방향으로 앞질러 그려 보고, 부딪히기
+    # time_before_collision 초 전에는 서도록 속도를 깎는다. 빠르면 멀리서,
+    # 느리면 가까이서 반응한다. 그래서 속도를 열어도 사람이 구역을 다시
+    # 그릴 필요가 없다.
+    #
+    # 1.5 초 근거: 0.6 m/s 에서 멈추는 데 반응 0.3 + 감속 1.0 = 1.3 초.
+    FootprintApproach:
+      type: "polygon"
+      action_type: "approach"
+      footprint_topic: "/local_costmap/published_footprint"
+      # 2.0 초 근거 — 0.25 m/s 면 발자국에서 0.5m(차체 중심 기준 0.935m)
+      # 안의 장애물에 반응한다. 아래 정지 구역(0.60m)보다 바깥이라 approach
+      # 가 먼저 완만하게 줄이고, 정지 구역은 마지막 수단으로만 남는다.
+      #
+      # ⚠ 처음에는 1.5 로 두고 감속 구역(1.20m)·정지 구역(0.70m)을 그대로
+      #   뒀는데, approach 가 반응할 창이 통째로 정지 구역 안쪽이라 한 번도
+      #   발동하지 못했다(감속 64회·정지 26회에 approach 0회, 2026-09-16).
+      #   고정 구역이 앞을 다 막고 있으면 approach 는 있으나 마나다.
+      time_before_collision: 2.0
+      simulation_time_step: 0.05
+      max_points: 3
+      visualize: False
+      enabled: True
+
+    # 마지막 수단. 속도 조절은 위의 approach 가 맡고, 여기는 '몸에 닿기
+    # 직전' 일 때만 선다.
+    #
+    # 차체는 앞뒤 435mm, 좌우 135mm. 앞 165mm / 옆 85mm 여유.
+    #
+    # ⚠ 크게 잡으면 안 된다. 이것은 계단식이라 경계에 걸친 점이 들락날락하면
+    #   정지와 출발이 되풀이돼 뚝뚝 끊긴다. 게다가 충돌감시는 속도 평활기보다
+    #   뒤에 있어 그 계단이 완만해질 데 없이 그대로 바퀴에 실린다. 제자리
+    #   회전에서는 네모가 쓸고 지나가는 원이 커서 더 심하다 — 0.70x0.24 는
+    #   모서리가 0.74m 를 쓸지만 0.60x0.22 는 0.64m 로, 차체 자신이 쓰는
+    #   0.455m 에 훨씬 가깝다.
+    PolygonStop:
+      type: "polygon"
+      # 2026-10-26 차체 폭 270 -> 329mm. 옆 여유 8.5cm 를 지키도록 ±0.22 -> ±0.25.
+      # ⚠ 2026-11-12 ±0.25 -> ±0.195 (옆 여유 8.6 -> 3cm). 옆 8cm 안을 스치는 벽 · 기둥에
+      #   앞이 비어 있어도 섰다(사용자: "조금 여유가 ... 장애물인데 못지나가고 서있는
+      #   경우", 11/11 20:16~21:01 PolygonStop 정지 24회). 회전 · 비스듬한 진행의 충돌은
+      #   FootprintApproach(2초 앞 차체 투영)가 따로 막는다. 앞 0.60 · 뒤 -0.50 은 그대로.
+      # ⚠ 2026-11-16 ±0.195 -> ±0.18 (옆 여유 3 -> 1.5cm): 한쪽 5cm 남는 좁은 곳을 다녀야 한다(사용자).
+      #   실행 중 param set 은 안 먹는다 — bringup 재시작 때 반영.
+      points: [0.60, 0.18, 0.60, -0.18, -0.50, -0.18, -0.50, 0.18]
+      action_type: "stop"
+      max_points: 5           # 잡음 몇 점으로 서지 않게. 5점 이상일 때만
+      visualize: True
+      polygon_pub_topic: "polygon_stop"
+      enabled: True
+
+    # ⚠ 감속 구역(PolygonSlow, 1.20x0.40 에서 40%)은 뺐다. 속도를 계단으로
+    #   깎아 뚝뚝 끊기는 주된 원인이었고(64회 발동), approach 가 같은 일을
+    #   속도에 비례해 완만하게 한다. 둘을 같이 두면 계단이 먼저 걸려 approach
+    #   가 무의미해진다(2026-09-16).
+
+    # 카메라 2대 (2026-11-11): 라이다 높이 밖 가까운 장애물 보조 확인. 아래(D435F) · 정면
+    # (D435i) 카메라 각각 camera_obstacles 가 낸 스캔. 여기서 바로 감속(FootprintApproach) ·
+    # 정지(PolygonStop) 하고, 치우면 그대로 이어 간다. 데이터가 source_timeout(0.5초)보다
+    # 오래되면 그 카메라만 무시한다 = 카메라가 죽어도 라이다로 간다.
+    observation_sources: ["scan", "camera_down", "camera_front"]
+    scan:
+      type: "scan"
+      topic: "/scan"
+      enabled: True
+    camera_down:
+      type: "scan"
+      topic: "/camera/obstacle_scan"
+      enabled: True
+    camera_front:
+      type: "scan"
+      topic: "/camera/obstacle_scan_front"
+      enabled: True
+
+velocity_smoother:
+  ros__parameters:
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.25, 0.0, 0.6]
+    min_velocity: [-0.25, 0.0, -0.6]
+    # 각가속도 1.5 rad/s^2 은 20Hz 에서 한 주기에 0.075 rad/s 를 바꿀 수 있어
+    # 조향이 톡톡 끊긴다. 0.8 로 낮추면 같은 지령도 완만하게 실린다.
+    # 대신 급한 장애물 회피 반응이 느려지므로, 좁은 곳에서는 다시 올린다.
+    #
+    # ⚠ 2026-09-28 가속을 base_node 제한(0.20 m/s^2, 0.60 rad/s^2)에 맞춤.
+    #   여기가 더 크면 nav2 는 실제보다 빨리 붙는다고 믿는다(OPEN_LOOP).
+    #   감속 -0.6 은 base_node 와 같다. 장애물 정지는 collision_monitor 의
+    #   approach(2.0초)가 속도에 맞춰 잡으므로, 속도를 올려도 따로 고칠 것 없다
+    #   (0.6 m/s: 반응 0.3 + 감속 1.0 = 1.3초 < 2.0초).
+    # ⚠ 전진 0.2 -> 0.1 (2026-09-29). 주행속도 0.5 에서 2.5초 만에 최고
+    #   속도에 닿아 "바로 빨라지는 느낌", 출발 때 캐스터에 휘청였다(사용자).
+    #   0.5 m/s 까지 5초, 약 1.25m. 감속은 그대로(멈출 때는 빨리 서야 한다).
+    #   base_node 제한(0.20)보다 작으니 nav2 가 믿는 가속과 실제가 같다.
+    max_accel: [0.1, 0.0, 0.6]
+    max_decel: [-0.6, 0.0, -0.8]
+    odom_topic: "/odometry/filtered"
+    odom_duration: 0.1
+
+# 경로 다듬기 (2026-10-26). Theta* 는 직선을 이어 경로를 그려 꺾이는 곳이 각지고,
+# 로봇은 그 모서리를 짧은 반경으로 홱 돈다(사용자: "너무 좁게 돌아").
+# ConstrainedSmoother: 최소 회전 반경 · 장애물 비용 · 매끄러움을 같이 맞춘다.
+#   w_smooth 가 커서 넓은 곳의 직선은 그대로 직선이다(10/02 S자 대책 유지).
+#   w_cost 는 장애물 근처에서만 경로를 밀어낸다. 실패하면 BT 가 원래 경로로 간다.
+smoother_server:
+  ros__parameters:
+    costmap_topic: global_costmap/costmap_raw
+    footprint_topic: global_costmap/published_footprint
+    robot_base_frame: base_footprint
+    transform_tolerance: 0.3
+    smoother_plugins: ["SmoothPath"]
+    SmoothPath:
+      plugin: "nav2_constrained_smoother/ConstrainedSmoother"
+      reversing_enabled: false
+      path_downsampling_factor: 3
+      path_upsampling_factor: 1
+      keep_start_orientation: false
+      keep_goal_orientation: true
+      minimum_turning_radius: 0.40
+      w_curve: 30.0
+      w_dist: 0.0
+      w_smooth: 2000000.0
+      # ⚠ 2026-10-27: 0.015 -> 0.0. 1번<->2번 경로 옆 0.5m 렉1 의 비용(40~55)을 피해
+      #   경로를 렉 반대쪽으로 최대 46mm 부풀렸다(원래 경로 0~27mm) — 렉을 지나 되돌아오며
+      #   S자(사용자: '살짝씩 S자'). 직선 구간 좌우 폭 16 -> 40mm. 벽 띄우기는 전역
+      #   costmap footprint_padding 0.05 가 맡는다. 모서리 둥글게(회전 반경)는 그대로.
+      w_cost: 0.0
+      w_cost_cusp_multiplier: 3.0
+      cusp_zone_length: 2.5
+      # 차체가 길쭉하다(873.5mm) — 가운데만 보지 않고 앞뒤 0.3m 지점의 장애물 비용도 같이 본다.
+      # [x, y, 가중치, ...]. 빈 목록은 서버가 못 읽고 죽는다(2026-10-26).
+      cost_check_points: [0.30, 0.0, 0.5, -0.30, 0.0, 0.5]
+      optimizer:
+        max_iterations: 70
+        debug_optimizer: false
+        gradient_tol: 5000.0
+        fn_tol: 1.0e-15
+        param_tol: 1.0e-20

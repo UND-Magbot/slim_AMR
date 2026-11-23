@@ -1,0 +1,69 @@
+slam_toolbox:
+  ros__parameters:
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+    scan_topic: /scan
+    mode: mapping
+
+    debug_logging: false
+    throttle_scans: 1
+    transform_publish_period: 0.02
+    map_update_interval: 1.0
+    resolution: 0.05
+    # 라이다 사양에 맞춘다. min 을 0 으로 두면 slam_toolbox 가
+    # "설정이 라이다 능력을 넘는다"고 경고하며 자체 값으로 덮어쓴다.
+    min_laser_range: 0.1
+    max_laser_range: 20.0
+    minimum_time_interval: 0.2
+    transform_timeout: 0.2
+    tf_buffer_duration: 30.0
+    stack_size_to_use: 40000000
+
+    # 이 간격마다 스캔 정합을 한 번 하고 map->odom 을 고친다.
+    #
+    # 5cm/0.05rad 은 로봇을 세워 두고 시험하던 때의 값이다. 자율주행을
+    # 붙이니 정합이 너무 잦아, 정합마다 섞이는 잡음이 그대로 map->odom 의
+    # 흔들림이 되고, 컨트롤러가 그것을 '로봇이 밀렸다' 로 보고 조향해
+    # 직진 중에 좌우로 흔들렸다(2026-09-11).
+    # 0.2 로 올리면 정합 횟수가 1/4 로 줄어 흔들림이 잦아든다. 대신 보정이
+    # 늦어지므로, 슬립이 심하면 다시 낮춰야 한다.
+    use_scan_matching: true
+    use_scan_barycenter: true
+    minimum_travel_distance: 0.2
+    minimum_travel_heading: 0.2
+    scan_buffer_size: 20
+    scan_buffer_maximum_scan_distance: 20.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+    loop_search_maximum_distance: 3.0
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    # (2026-10-14 시험: 범위 ±5도·간격 0.5도로 좁혀 봤으나 1도 넘는 보정·튐이 그대로라 되돌림.
+    #  큰 튐의 원인은 라이다 위치 설정(URDF lidar_x)이 38mm 틀린 것이었다.)
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true

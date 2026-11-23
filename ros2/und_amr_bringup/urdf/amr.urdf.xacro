@@ -1,0 +1,180 @@
+<?xml version="1.0"?>
+<!-- UND_AMR : 2륜 차동구동 + 캐스터, LDS-50C-E 라이다 2대(대각선), RealSense D435i
+     2026-10-26 차체 변경 (873.5 x 328.8) · 라이다 2대 · 카메라 위치 반영
+
+     ⚠ TODO(실측) 표시된 치수는 임시값입니다. 센서 장착 위치가
+       정해지면 실측값으로 바꾸세요. TF 가 틀리면 SLAM 결과가 틀어집니다. -->
+<robot name="und_amr" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- 차체 -->
+  <!-- 여기 wheel_separation 은 바퀴 중심간 "기하학적" 거리(줄자 실측 190mm).
+       오도메트리에 쓰는 "유효" 윤거는 이보다 5% 크며(타이어 접지폭 스크럽)
+       config/amr_params.yaml 에 0.1995 로 따로 둔다. 둘은 다른 값이 맞다. -->
+  <xacro:property name="wheel_separation" value="0.175"/>  <!-- 실측 2026-09-09 (줄자, 바퀴 중심간) -->
+  <xacro:property name="wheel_radius"     value="0.0853"/> <!-- 바퀴는 교체 전과 동일 (2026-09-09 확인). 정밀값은 주행 검증으로 -->
+  <xacro:property name="base_len" value="0.8735"/>  <!-- 도면 2026-10-23 (차체 변경) -->
+  <xacro:property name="base_wid" value="0.3288"/>  <!-- 도면 2026-10-23 (차체 변경) -->
+  <xacro:property name="base_hgt" value="0.183"/>   <!-- 신형 SLIM 도면 2026-09-09 -->
+
+  <!-- 구동축 중심(base_link)에서 차체 앞끝까지 거리.
+       구동축이 차체 정중앙이면 base_len/2 = 0.40 이다.
+       nav2 footprint 와 카메라 위치가 여기에 걸리므로 실측 필요. -->
+  <!-- 2026-10-26: 라이다 2대가 구동축에서 앞뒤로 같은 거리(+405.4 / -407.1mm, 회전 시험)라
+       구동축을 차체 정중앙으로 본다. 라이다가 차체 앞 · 뒤끝에서 같은 만큼 들어와 있다는 가정. -->
+  <xacro:property name="axle_to_front" value="${base_len/2}"/>
+  <xacro:property name="body_x_offset"    value="${axle_to_front - base_len/2}"/>
+
+  <!-- 센서 장착 위치 (base_link 기준) -->
+  <!-- 라이다 2대 (2026-10-23 장착, 도면 img/KakaoTalk_20261023_*.png):
+       앞 왼쪽은 정면 기준 왼쪽으로 90도, 뒤 오른쪽은 오른쪽으로 90도 돌려 장착.
+       위치 · 방향은 2026-10-26 tools/lidar_calib.py 로 쟀다 (좌·우 90도 4번씩 + 0.4m 직진 왕복,
+       logs/lidar_calib_1026_1615.json). 회전마다 남는 차이 약 5mm, 직진 두 번의 방향 차 0.7~1.1도
+       (평균값). 두 라이다를 이 값으로 겹치면 서로 (3.9, 7.1)mm, 0.09도 어긋남.
+       도면 좌우 135mm 보다 9mm 바깥(144mm)으로 나왔다.
+         앞 왼쪽 = enp2s0 랜 포트 (/scan_front)  ·  뒤 오른쪽 = eno1 (/scan_rear)  (앞뒤 뒤집은 뒤) -->
+  <!-- ⚠ 2026-10-26 앞뒤 반대 (사용자: "로봇 뒤가 앞임"). 위 측정은 예전 앞 기준이라 180도 돌렸다:
+       (x, y, yaw) -> (-x, -y, yaw+180). 그러면 enp2s0 라이다가 앞 왼쪽(+91.4도),
+       eno1 라이다가 뒤 오른쪽(-87.9도) — 처음 말한 장착(앞 왼쪽 +90, 뒤 오른쪽 -90)과 맞다.
+       예전 앞 기준 값: eno1 (+405.4, +143.9, +92.06도), enp2s0 (-407.1, -144.5, -88.57도) -->
+  <xacro:property name="lidar_f_x"   value="0.4071"/>
+  <xacro:property name="lidar_f_y"   value="0.1445"/>
+  <xacro:property name="lidar_f_yaw" value="${91.43*pi/180}"/>
+  <xacro:property name="lidar_r_x"   value="-0.4054"/>
+  <xacro:property name="lidar_r_y"   value="-0.1439"/>
+  <xacro:property name="lidar_r_yaw" value="${-87.94*pi/180}"/>
+  <!-- 스캔면 높이: 도면 장착면 지면 157mm + 매뉴얼 4.1 광축(라이다 바닥에서 44.5mm) -->
+  <xacro:property name="lidar_z_ground" value="0.2015"/>
+  <xacro:property name="lidar_z"  value="${lidar_z_ground - wheel_radius}"/>
+  <!-- 카메라 2대 (2026-11-11 전장 재세팅, 앞 넥 위).
+       위치 x, y: 사용자 실측 "바퀴 기준 앞으로 47cm, 가로기준 13.5" — 구동축(로봇 중심)에서
+       앞 0.470m, 중심선에서 왼쪽 0.135m 로 넣었다. 라이다 점과 정면 카메라 깊이를 맞춰 보면
+       왼쪽이 맞고(오른쪽 -0.135 는 평균 오차 171mm 대 140mm), 0.135 와 0.03 은 이 방법으로는
+       갈리지 않았다. 다르면 cam_y 만 고친다.
+       높이 · 숙임: 각 카메라 깊이로 바닥 평면을 맞춰 잰 값 (2026-11-11, 정지).
+       옆 기울기는 0.6 / 0.9도로 작고 부호를 확인하지 않아 0 으로 둔다.
+       ⚠ 예전 카메라(차체 앞끝 +30mm, 바닥 230mm, 수평)는 없어졌다. -->
+  <xacro:property name="cam_x" value="0.470"/>
+  <!-- ⚠ 2026-11-13 0.135 -> 0.040: 렉(ls_origin) 앞 기둥 2개가 정면 카메라 깊이에서 라이다 다리보다
+       왼쪽으로 +87 / +100mm 똑같이 밀려 보였다 = 카메라 좌우 값이 틀림. "가로기준 13.5" 는
+       옆면(차체 반폭 164mm)에서 13.5cm = 중심에서 약 3cm 였던 것으로 보인다. 데이터로 0.040. -->
+  <xacro:property name="cam_y" value="0.040"/>
+  <!-- 정면 D435i (시리얼 243322071697, IMU): 바닥에서 1.003m, 0.9도 아래 -->
+  <xacro:property name="cam_z_ground" value="1.003"/>
+  <xacro:property name="cam_z"     value="${cam_z_ground - wheel_radius}"/>
+  <xacro:property name="cam_pitch" value="${0.9*pi/180}"/>   <!-- 양수 = 앞을 숙임 -->
+  <!-- ⚠ 2026-11-13 0 -> +2.0도(왼쪽): 렉 기둥 3개(0.45m · 1.0m · 1.08m)가 컬러 화면에서 예측보다
+       오른쪽으로 똑같이 18~26px(평균 21px, fx 607) 밀려 보였다. 거리와 상관없이 같은 픽셀 = 방향 오차. -->
+  <xacro:property name="cam_yaw"   value="${2.0*pi/180}"/>
+  <!-- 아래 D435F (시리얼 406122070374): 바닥에서 0.955m, 65.6도 아래 -->
+  <xacro:property name="camd_z_ground" value="0.955"/>
+  <xacro:property name="camd_z"     value="${camd_z_ground - wheel_radius}"/>
+  <xacro:property name="camd_pitch" value="${65.6*pi/180}"/>
+  <xacro:property name="camd_yaw"   value="0.0"/>
+
+  <material name="gray"><color rgba="0.35 0.37 0.42 1"/></material>
+  <material name="dark"><color rgba="0.12 0.13 0.16 1"/></material>
+  <material name="blue"><color rgba="0.30 0.64 1.00 1"/></material>
+
+  <!-- base_footprint : 지면 투영점. nav2 가 이걸 기준으로 삼는다 -->
+  <link name="base_footprint"/>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="${body_x_offset} 0 0"/>
+      <geometry><box size="${base_len} ${base_wid} ${base_hgt}"/></geometry>
+      <material name="gray"/>
+    </visual>
+    <collision>
+      <origin xyz="${body_x_offset} 0 0"/>
+      <geometry><box size="${base_len} ${base_wid} ${base_hgt}"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/><child link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}"/>
+  </joint>
+
+  <!-- 구동륜 : left = 축1, right = 축2 -->
+  <xacro:macro name="wheel" params="name y">
+    <link name="${name}_wheel_link">
+      <visual>
+        <origin rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="0.04"/></geometry>
+        <material name="dark"/>
+      </visual>
+    </link>
+    <joint name="${name}_wheel_joint" type="continuous">
+      <parent link="base_link"/><child link="${name}_wheel_link"/>
+      <origin xyz="0 ${y} ${-base_hgt/2}"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+  <xacro:wheel name="left"  y="${ wheel_separation/2}"/>
+  <xacro:wheel name="right" y="${-wheel_separation/2}"/>
+
+  <!-- 라이다 2대 -->
+  <xacro:macro name="lidar" params="name x y yaw">
+    <link name="${name}">
+      <visual>
+        <geometry><cylinder radius="0.028" length="0.052"/></geometry>
+        <material name="blue"/>
+      </visual>
+    </link>
+    <joint name="${name}_joint" type="fixed">
+      <parent link="base_link"/><child link="${name}"/>
+      <origin xyz="${x} ${y} ${lidar_z}" rpy="0 0 ${yaw}"/>
+    </joint>
+  </xacro:macro>
+  <xacro:lidar name="laser_front" x="${lidar_f_x}" y="${lidar_f_y}" yaw="${lidar_f_yaw}"/>
+  <xacro:lidar name="laser_rear"  x="${lidar_r_x}" y="${lidar_r_y}" yaw="${lidar_r_yaw}"/>
+
+  <!-- 합친 스캔(/scan) 프레임: 구동축 바로 위, 스캔면 높이, 정면이 0도.
+       scan_merger 가 두 라이다를 여기 기준 360도 스캔 하나로 낸다. SLAM · nav2 ·
+       api_node · cart_detector 는 지금처럼 /scan 과 그 frame_id 를 쓴다. -->
+  <link name="laser"/>
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/><child link="laser"/>
+    <origin xyz="0 0 ${lidar_z}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- 정면 카메라 : RealSense D435i (camera_name 'camera') -->
+  <link name="camera_link">
+    <visual>
+      <geometry><box size="0.025 0.090 0.025"/></geometry>
+      <material name="dark"/>
+    </visual>
+  </link>
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/><child link="camera_link"/>
+    <origin xyz="${cam_x} ${cam_y} ${cam_z}" rpy="0 ${cam_pitch} ${cam_yaw}"/>
+  </joint>
+
+  <!-- 아래 카메라 : RealSense D435F (camera_name 'camera_down'). 광학 프레임은
+       realsense 노드가 camera_down_link 아래로 낸다. -->
+  <link name="camera_down_link">
+    <visual>
+      <geometry><box size="0.025 0.090 0.025"/></geometry>
+      <material name="dark"/>
+    </visual>
+  </link>
+  <joint name="camera_down_joint" type="fixed">
+    <parent link="base_link"/><child link="camera_down_link"/>
+    <origin xyz="${cam_x} ${cam_y} ${camd_z}" rpy="0 ${camd_pitch} ${camd_yaw}"/>
+  </joint>
+  <!-- 카메라 장애물 스캔(/camera/obstacle_scan) 프레임: 아래 카메라 바로 밑, 수평.
+       카메라 프레임은 65.6도 숙어 있어 그대로 LaserScan 프레임으로 쓰면 점이 바닥 밑으로 간다. -->
+  <link name="camera_obstacle_frame"/>
+  <joint name="camera_obstacle_joint" type="fixed">
+    <parent link="base_footprint"/><child link="camera_obstacle_frame"/>
+    <origin xyz="${cam_x} ${cam_y} 0" rpy="0 0 ${camd_yaw}"/>
+  </joint>
+
+  <!-- 카메라 광학 프레임 : ROS 관례상 z 전방, x 우측, y 하향 -->
+  <link name="camera_depth_optical_frame"/>
+  <joint name="camera_depth_optical_joint" type="fixed">
+    <parent link="camera_link"/><child link="camera_depth_optical_frame"/>
+    <origin rpy="${-pi/2} 0 ${-pi/2}"/>
+  </joint>
+
+</robot>

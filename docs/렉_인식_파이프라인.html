@@ -1,0 +1,343 @@
+<title>렉 인식 파이프라인</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f4f6f3; --panel:#ffffff; --ink:#161b20; --muted:#5d6a75;
+  --line:#dae0da; --line-soft:#eaeee9;
+  --ok:#1c8f60; --warn:#a8761a; --bad:#b64c33; --accent:#1c8f60;
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1318; --panel:#151b21; --ink:#e4ebf0; --muted:#8b98a4;
+    --line:#242e37; --line-soft:#1b232a;
+    --ok:#4de0a0; --warn:#ffd23f; --bad:#ff8f5c; --accent:#4de0a0;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1318; --panel:#151b21; --ink:#e4ebf0; --muted:#8b98a4;
+  --line:#242e37; --line-soft:#1b232a;
+  --ok:#4de0a0; --warn:#ffd23f; --bad:#ff8f5c; --accent:#4de0a0;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:400 16px/1.75 "IBM Plex Sans KR", system-ui, sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:860px; margin:0 auto; padding:64px 24px 96px}
+.eyebrow{
+  font:600 11px/1 "IBM Plex Mono", monospace; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 14px;
+}
+h1{
+  font-weight:700; font-size:clamp(30px,5vw,44px); line-height:1.15;
+  letter-spacing:-.02em; margin:0 0 16px; text-wrap:balance;
+}
+.lede{font-size:18px; color:var(--muted); margin:0 0 8px; max-width:62ch}
+h2{
+  font-weight:700; font-size:24px; letter-spacing:-.01em;
+  margin:64px 0 6px; text-wrap:balance;
+  padding-top:26px; border-top:1px solid var(--line);
+}
+h2 .n{
+  font:600 12px/1 "IBM Plex Mono", monospace; color:var(--accent);
+  display:block; margin-bottom:10px; letter-spacing:.1em;
+}
+h3{font-weight:600; font-size:17px; margin:34px 0 4px}
+p{margin:12px 0; max-width:66ch}
+ul{margin:12px 0; padding-left:20px; max-width:66ch}
+li{margin:7px 0}
+code{
+  font:400 .89em/1 "IBM Plex Mono", monospace;
+  background:var(--line-soft); padding:2px 6px; border-radius:4px;
+}
+strong{font-weight:600}
+figure{margin:32px 0; background:var(--panel); border:1px solid var(--line);
+  border-radius:10px; padding:24px 20px 16px; overflow-x:auto}
+figure svg{max-width:100%; height:auto; display:block; margin:0 auto}
+figcaption{
+  font:400 13px/1.6 "IBM Plex Sans KR", sans-serif; color:var(--muted);
+  margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);
+  text-align:left;
+}
+.tbl{width:100%; border-collapse:collapse; margin:20px 0; font-size:14.5px}
+.tbl th,.tbl td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line)}
+.tbl th{font:600 11px/1 "IBM Plex Mono",monospace; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted)}
+.tbl td.num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
+.pill{display:inline-block; font:600 11px/1 "IBM Plex Mono",monospace;
+  padding:4px 8px; border-radius:999px; letter-spacing:.04em}
+.pill.done{color:var(--ok); background:color-mix(in srgb, var(--ok) 14%, transparent)}
+.pill.todo{color:var(--warn); background:color-mix(in srgb, var(--warn) 16%, transparent)}
+.note{
+  border-left:3px solid var(--accent); background:var(--panel);
+  padding:14px 18px; margin:24px 0; border-radius:0 8px 8px 0;
+}
+.note p{margin:6px 0}
+.note .t{font:600 12px/1 "IBM Plex Mono",monospace; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--accent); display:block; margin-bottom:8px}
+.dg .st{fill:none; stroke:currentColor; stroke-width:1.4}
+.dg .fillp{fill:var(--panel); stroke:currentColor; stroke-width:1.4}
+.dg .lbl{fill:currentColor; font:600 13px "IBM Plex Sans KR",sans-serif}
+.dg .sub{fill:var(--muted); font:400 11px "IBM Plex Mono",monospace}
+.dg .yes{fill:var(--muted); font:600 10px "IBM Plex Mono",monospace}
+.dg .ln{stroke:currentColor; stroke-width:1.4; fill:none}
+.dg .ok{stroke:var(--ok)} .dg .okf{fill:var(--ok)}
+.dg .bad{stroke:var(--bad)} .dg .badf{fill:var(--bad)}
+.dg .warnf{fill:var(--warn)}
+.dg .dash{stroke-dasharray:5 4}
+@media (prefers-reduced-motion:no-preference){
+  a{transition:color .15s}
+}
+a{color:var(--accent)}
+</style>
+
+<div class="wrap">
+<p class="eyebrow">UND_AMR · 2026-08-31 갱신</p>
+<h1>렉 인식 파이프라인</h1>
+<p class="lede">라이다로 대차 다리를 찾고 카메라로 그것이 진짜 대차인지 확인한 뒤,
+대차 중심에 로봇을 맞춰 넣기까지의 절차. 그리고 그 값이 <strong>흔들리지 않게
+만드는 장치들</strong>.</p>
+
+<h2><span class="n">01</span>두 센서가 하는 일이 다르다</h2>
+<p>라이다와 카메라를 겹쳐 쓰는 이유는 정밀도를 높이려는 게 아니라
+<strong>서로 못 하는 것을 메우기 위해서</strong>다.</p>
+<table class="tbl">
+<tr><th>센서</th><th>보는 것</th><th>역할</th><th>한계</th></tr>
+<tr><td>라이다</td><td>지면 325 mm 높이의 수평 단면 하나</td>
+    <td>다리 위치를 mm 단위로 측정</td>
+    <td>그 높이에 있는 것이면 무엇이든 다리처럼 보인다</td></tr>
+<tr><td>카메라</td><td>바닥부터 위까지 세로 전체</td>
+    <td>그 자리에 기둥이 실제로 서 있는지 확인</td>
+    <td>가까운 다리는 화각 밖, 뒤 다리는 앞 다리에 가린다</td></tr>
+</table>
+<p>라이다 반복 정밀도는 실측 1.6 mm 이고 1 m 거리에서 다리 하나에 점이 10~19개
+맺힌다. 평균을 내면 다리 중심을 0.4~0.5 mm 로 잡을 수 있다. <strong>정밀도는
+라이다만으로 충분하다.</strong> 카메라는 "이게 대차가 맞는가" 에만 쓴다.</p>
+
+<h2><span class="n">02</span>전체 흐름</h2>
+<figure class="dg">
+<svg viewBox="0 0 700 700" role="img" aria-label="라이다 스캔에서 시작해 덩어리 끊기, 다리 후보 고르기, 네 개 조합 훑기, 등록 규격 대조를 거쳐 카메라로 기둥을 확인하고, 프레임 간 유지와 대상 선정을 지나 도킹 어긋남까지 이어지는 흐름.">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+    <marker id="aro" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ok)"/></marker>
+  </defs>
+  <rect class="fillp" x="180" y="14" width="300" height="50" rx="7"/>
+  <text class="lbl" x="198" y="36">라이다 스캔</text>
+  <text class="sub" x="198" y="54">2400점 · 14.9 Hz · 3 m 이내</text>
+  <line class="ln" x1="330" y1="64" x2="330" y2="96" marker-end="url(#ar)"/>
+
+  <rect class="fillp" x="180" y="98" width="300" height="50" rx="7"/>
+  <text class="lbl" x="198" y="120">다리 후보 고르기</text>
+  <text class="sub" x="198" y="138">폭 10~100 mm · 모양은 보지 않음</text>
+  <line class="ln" x1="330" y1="148" x2="330" y2="180" marker-end="url(#ar)"/>
+
+  <rect class="fillp" x="180" y="182" width="300" height="50" rx="7"/>
+  <text class="lbl" x="198" y="204">표면 → 중심 보정</text>
+  <text class="sub" x="198" y="222">고정 반지름 20 mm · 04절</text>
+  <line class="ln" x1="330" y1="232" x2="330" y2="264" marker-end="url(#ar)"/>
+
+  <rect class="fillp" x="180" y="266" width="300" height="50" rx="7"/>
+  <text class="lbl" x="198" y="288">네 개 조합을 전부 훑어 규격 대조</text>
+  <text class="sub" x="198" y="306">후보 26개면 14,950가지 — 03절</text>
+  <line class="ln" x1="330" y1="316" x2="330" y2="348" marker-end="url(#ar)"/>
+
+  <rect class="fillp" x="180" y="350" width="300" height="50" rx="7"/>
+  <text class="lbl" x="198" y="372">프레임 간 유지</text>
+  <text class="sub" x="198" y="390">점수가 잠깐 내려가도 놓치지 않는다 — 06절</text>
+  <line class="ln" x1="330" y1="400" x2="330" y2="432" marker-end="url(#ar)"/>
+
+  <rect class="fillp" x="180" y="434" width="300" height="50" rx="7"/>
+  <text class="lbl" x="198" y="456">카메라로 기둥 확인</text>
+  <text class="sub" x="198" y="474">화각 밖 · 가려짐은 판단 보류 — 05절</text>
+  <line class="ln" x1="330" y1="484" x2="330" y2="516" marker-end="url(#ar)"/>
+
+  <rect class="fillp ok" x="180" y="518" width="300" height="50" rx="7"/>
+  <text class="lbl" x="198" y="540">대상 하나 고르기</text>
+  <text class="sub" x="198" y="558">확인된 것 먼저, 같으면 가까운 것 — 07절</text>
+  <line class="ln ok" x1="330" y1="568" x2="330" y2="600" marker-end="url(#aro)"/>
+
+  <rect class="st ok" x="120" y="602" width="200" height="46" rx="6"/>
+  <text class="lbl" x="138" y="624">/carts</text>
+  <text class="sub" x="138" y="640">화면 표시</text>
+  <rect class="st ok" x="340" y="602" width="230" height="46" rx="6"/>
+  <text class="lbl" x="358" y="624">/cart_align</text>
+  <text class="sub" x="358" y="640">도킹 어긋남 — 08절</text>
+  <line class="ln ok" x1="330" y1="590" x2="220" y2="590"/>
+  <line class="ln ok" x1="220" y1="590" x2="220" y2="600" marker-end="url(#aro)"/>
+  <line class="ln ok" x1="330" y1="590" x2="455" y2="590"/>
+  <line class="ln ok" x1="455" y1="590" x2="455" y2="600" marker-end="url(#aro)"/>
+</svg>
+<figcaption>라이다가 위치를 재고, 카메라가 진짜인지 가른다. 그 사이에
+흔들림을 막는 장치가 두 겹 들어간다.</figcaption>
+</figure>
+
+<h2><span class="n">03</span>왜 조합을 전부 훑는가</h2>
+<p>현장에서 겪은 실패는 <strong>접지선이 다리로 잡히는 것</strong>이었다.
+후보를 전부 다리로 가정하면 가짜가 하나만 끼어도 크기가 안 맞아
+<strong>인식 자체가 실패한다</strong>. 대차가 눈앞에 있는데 못 찾는다.</p>
+<p>그래서 후보 중 네 개를 고르는 조합을 모두 훑어 등록된 규격에 가장 잘 맞는
+조합을 찾는다. 실측에서 후보 26개(진짜 4 + 가짜 22) 가운데 진짜 네 개만
+정확히 골라냈다. <strong>가짜를 걸러내는 것이 아니라, 진짜 네 개를 찾아내는
+방식이다.</strong></p>
+<div class="note"><span class="t">다리 굵기와 모양은 쓰지 않는다</span>
+<p>같은 대차의 네 다리를 재보면 15~82 mm 로 제각각 나온다. 캐스터라 바퀴가
+향한 방향에 따라 보이는 폭이 몇 배까지 달라진다. 그래서 판별은
+<strong>네 다리가 이루는 가로 × 세로</strong> 만으로 한다.</p></div>
+
+<h2><span class="n">04</span>규격은 재서 넣는다 — 도면값을 믿지 않는다</h2>
+<p><code>carts.yaml</code> 에 넣는 <code>width</code>/<code>depth</code> 는 줄자로 잰
+외곽 치수가 아니라 <strong>라이다가 보는 다리 중심 간 거리</strong>다.</p>
+<div class="note"><span class="t">2026-08-28 · 95 mm 가 만든 일</span>
+<p>S300 대차를 도면값 765 × 765 mm 로 등록했더니 초당 한 번꼴로 인식/미인식을
+오갔다. 라이다 실측은 <strong>707 × 688 mm</strong> — 오차 95 mm 였다.</p>
+<p>점수는 <code>1 − 오차/(허용×2)</code> 로 매긴다. 95 mm 면 점수 0.21 인데
+문턱이 0.25 다. <strong>딱 걸쳐 있어 잡음이 넘나들었다.</strong> 계산상 문턱을
+넘는 프레임이 11 %, 실제 관측 인식률도 11 % 로 정확히 일치했다.</p>
+<p>실측값으로 바꾸니 인식률 100 %, 점수 0.97, 뒤바뀜 0회가 됐다.</p></div>
+
+<h3>시점이 바뀌어도 같은 값이 나와야 한다</h3>
+<p>라이다는 다리의 <strong>로봇 쪽 표면</strong>만 본다. 덩어리 중심은 실제 다리
+중심보다 앞으로 나와 있어 뒤로 밀어 보정해야 한다. 그 미는 양을 처음에는
+'그때그때 보이는 폭의 절반' 으로 썼는데, 보이는 폭이 캐스터 방향에 따라
+15~51 mm 로 달라져 <strong>같은 대차도 보는 각도마다 크기가 달라졌다</strong>.</p>
+<table class="tbl">
+<tr><th>보정 방식</th><th>실측 크기</th><th>흔들림 (긴 변 / 짧은 변)</th></tr>
+<tr><td>보정 없음</td><td class="num">640.9 × 572.0 mm</td><td class="num">±1.9 / ±0.6 mm</td></tr>
+<tr><td>보이는 폭 ÷ 2</td><td class="num">647.7 × 568.1 mm</td><td class="num">±2.4 / <b>±2.1 mm</b></td></tr>
+<tr><td><b>고정 반지름 20 mm</b></td><td class="num">649.2 × 572.3 mm</td><td class="num">±1.9 / <b>±0.6 mm</b></td></tr>
+</table>
+<p>반지름의 <strong>절대값이 정확할 필요는 없다.</strong> 모든 대차를 같은 값으로
+재고 같은 값으로 등록하므로 치우침이 상쇄된다. 중요한 것은 "시점이 바뀌어도
+같은 값이 나오는 것" 이다. 그래서 <code>leg_radius</code> 를 바꾸면
+<strong>등록된 대차를 전부 다시 재야 한다.</strong></p>
+<p>재는 일은 <strong>시스템 › 대차 실측</strong> 화면이 한다. 등록표와 대조하지
+않고 '가장 직사각형에 가까운 조합' 을 찾으므로 처음 보는 대차도 잰다.
+흔들림이 20 mm 를 넘으면 경고한다 — 그 상태로 등록하면 그 대차는 계속 깜빡인다.</p>
+
+<h2><span class="n">05</span>카메라 검증 — 언제 판단을 보류하는가</h2>
+<p>라이다는 325 mm 높이의 단면 하나만 본다. 그 높이에만 있는 물건(상자 모서리,
+파레트 귀퉁이, 늘어진 선)도 다리처럼 잡힌다. 카메라 뎁스로
+<strong>그 자리에 기둥이 세로로 이어지는지</strong> 확인한다. 다리 모양은 여기서도
+보지 않는다.</p>
+<p><strong>못 본 것을 실패로 세면 안 된다.</strong> 판정에서 빼는 경우가 둘 있다.</p>
+<table class="tbl">
+<tr><th>경우</th><th>어떻게 아는가</th><th>처리</th></tr>
+<tr><td>화각 밖</td><td>투영된 픽셀이 영상 밖</td><td>판정 보류</td></tr>
+<tr><td>가려짐</td><td>그 자리 뎁스가 기대보다 0.15 m 이상 가깝다</td><td>판정 보류 · 회색 점선</td></tr>
+</table>
+<div class="note"><span class="t">네 다리가 전부 가려지면 그건 가림이 아니다</span>
+<p>투영이 어긋나면 모든 다리가 엉뚱한 데(대개 바닥)에 찍히고, 그 자리 거리는
+늘 기대보다 가깝다. 그러면 넷 다 '가려짐' 으로 걸러져 원인이 보이지 않는다.
+그래서 이 경우는 <strong>정렬 어긋남 의심</strong>으로 따로 낸다.</p>
+<p>2026-08-28 에 실제로 이 일이 났다. 카메라가 12° 숙어 있는데 모델은 수평으로
+알고 있어, 라이다가 알려준 325 mm 지점이 화면에서 140 px 아래 바닥에 찍혔다.</p></div>
+
+<h2><span class="n">06</span>깜빡이지 않게 하는 장치들</h2>
+<p>값이 문턱 근처에 있으면 잡음만으로 표시가 뒤집힌다. 세 곳에 장치를 뒀다.</p>
+<table class="tbl">
+<tr><th>어디</th><th>무엇을</th><th>왜</th></tr>
+<tr><td>대차 인식</td><td>직전에 확실히 잡힌 자리 20 cm 안이면 1초간 유지</td>
+    <td>점수가 잠깐 내려가도 놓치지 않는다. 기준점은 확실히 잡힌 것만 갱신해
+        잘못 잡힌 자리가 눌러앉지 않게 한다</td></tr>
+<tr><td>카메라 검증</td><td>뎁스가 아예 안 잡힌 줄은 세지 않는다</td>
+    <td>"다른 게 보였다" 와 "못 봤다" 는 다르다. 얇은 기둥은 멀수록 뎁스가
+        끊겨, 빈 줄을 세면 거리만 멀어져도 점수가 떨어진다</td></tr>
+<tr><td>카메라 검증</td><td>최근 5프레임의 중앙값으로 판정</td>
+    <td>1.8 m 다리의 적중비가 프레임마다 0.22~1.00 로 널뛴다</td></tr>
+</table>
+<p>이력은 순번이 아니라 <strong>다리 자리로 묶는다.</strong> 사각형 꼭짓점 차례는
+프레임마다 바뀔 수 있어 순번으로 묶으면 이력이 섞인다.</p>
+<table class="tbl">
+<tr><th>단계</th><th>그 다리 적중비 중앙값</th><th>실패율</th></tr>
+<tr><td>처음</td><td class="num">0.45</td><td class="num">47 %</td></tr>
+<tr><td>빈 줄 제외</td><td class="num">0.59</td><td class="num">22 %</td></tr>
+<tr><td>+ 5프레임 중앙값</td><td class="num"><b>0.69</b></td><td class="num"><b>0 %</b></td></tr>
+</table>
+
+<h2><span class="n">07</span>여러 개가 잡힐 때</h2>
+<p>등록 대차가 늘면서, 방 안의 다른 물건 네 개가 우연히 어떤 규격의 사각형을
+이뤄 함께 잡히는 일이 생겼다. 실측에서 진짜 48회에 가짜 9회가 섞였다.
+<strong>가짜는 대개 화각 밖이라 카메라가 판정을 보류한다.</strong></p>
+<p>그래서 <strong>카메라로 확인된 것 → 가까운 것</strong> 순으로 하나를 골라
+<code>target</code> 을 단다. 나머지도 지우지 않고 흐린 점선으로 남긴다 —
+왜 그것을 골랐는지 사람이 볼 수 있어야 한다.</p>
+
+<h2><span class="n">08</span>도킹 어긋남</h2>
+<p>로봇 길이 800 mm 는 대차 깊이 500~690 mm 보다 길다. 앞뒤로 튀어나오는 것은
+감수하고, <strong>구동축 중심을 대차 중심에 맞추는 것</strong>을 목표로 한다.</p>
+<figure class="dg">
+<svg viewBox="0 0 620 300" role="img" aria-label="위에서 본 그림. 대차 네 다리가 이루는 사각형의 중심과 로봇 구동축 중심의 어긋난 양이 앞뒤·좌우·회전 세 값이며, 이 값을 0으로 몰아가는 것이 도킹이다.">
+  <defs><marker id="ar8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+  <rect class="st" x="200" y="50" width="260" height="200" rx="4"/>
+  <text class="sub" x="210" y="42">대차 — 다리 네 개</text>
+  <circle class="fillp" cx="200" cy="50" r="9"/><circle class="fillp" cx="460" cy="50" r="9"/>
+  <circle class="fillp" cx="200" cy="250" r="9"/><circle class="fillp" cx="460" cy="250" r="9"/>
+  <rect class="st ok" x="240" y="120" width="300" height="60" rx="5"/>
+  <text class="sub okf" x="248" y="112">로봇 800 × 270 mm — 앞뒤로 튀어나온다</text>
+  <circle class="okf" cx="390" cy="150" r="5"/>
+  <text class="sub okf" x="400" y="146">로봇 구동축 중심</text>
+  <circle class="badf" cx="330" cy="150" r="5"/>
+  <text class="sub badf" x="250" y="172">대차 중심</text>
+  <line class="ln bad dash" x1="330" y1="150" x2="390" y2="150" marker-end="url(#ar8)"/>
+  <text class="yes badf" x="336" y="192">이 어긋남을 0 으로</text>
+  <text class="sub" x="336" y="208">앞뒤 · 좌우 · 회전 세 값</text>
+</svg>
+<figcaption>진입 제어는 이 세 값을 0 으로 몰아가는 일이다.
+<code>/cart_align</code> 이 5 Hz 로 낸다.</figcaption>
+</figure>
+<div class="note"><span class="t">차체 기준으로 내야 한다</span>
+<p>라이다 좌표를 그대로 쓰면 <strong>라이다 장착각 2.1°</strong> 만큼 계속 틀어진
+채 들어간다. 실측에서 <code>옆 −0.136 m</code> 가 차체 기준으로는
+<code>좌우 −0.083 m</code> — <strong>53 mm 차이</strong>였다.</p>
+<p>회전은 다리 넷으로 앞뒤를 가릴 수 없으므로 90° 주기로 접어 ±45° 로 낸다.
+어느 변으로 진입할지는 별개 문제다.</p></div>
+<p>진입 중에는 오도메트리를 쓰지 않는다. 구동륜이 간헐적으로 접지를 잃어
+바퀴 회전량이 실제 이동을 대표하지 못한다(손으로 밀기만 해도 좌우 회전량이
+순간 20~28 % 벌어진다). 라이다로 다리를 계속 보면서 어긋남을 직접 재고 줄인다.</p>
+
+<h2><span class="n">09</span>구현 현황</h2>
+<table class="tbl">
+<tr><th>단계</th><th>상태</th><th>비고</th></tr>
+<tr><td>다리 후보 추출</td><td><span class="pill done">구현</span></td><td>모양·굵기 무관</td></tr>
+<tr><td>표면→중심 보정</td><td><span class="pill done">구현</span></td><td>고정 반지름 20 mm</td></tr>
+<tr><td>4개 조합 규격 대조</td><td><span class="pill done">구현</span></td><td>대차 종류는 설정 파일</td></tr>
+<tr><td>프레임 간 유지</td><td><span class="pill done">구현</span></td><td>1초 · 20 cm</td></tr>
+<tr><td>카메라 세로 검증</td><td><span class="pill done">구현</span></td><td>화각 밖·가려짐은 보류</td></tr>
+<tr><td>대상 선정</td><td><span class="pill done">구현</span></td><td>확인된 것 우선</td></tr>
+<tr><td>새 대차 실측·등록 화면</td><td><span class="pill done">구현</span></td><td>시스템 › 대차 실측</td></tr>
+<tr><td>도킹 어긋남 발행</td><td><span class="pill done">구현</span></td><td><code>/cart_align</code></td></tr>
+<tr><td>진입 제어</td><td><span class="pill todo">미구현</span></td><td>구동륜 접지 개선이 선행</td></tr>
+<tr><td>리프팅</td><td><span class="pill todo">미구현</span></td><td>기구 미장착</td></tr>
+</table>
+<p>새 대차가 생기면 <code>config/carts.yaml</code> 에 줄만 추가한다 — 화면에서
+재면 자동으로 써 넣는다. 코드는 고치지 않는다.</p>
+
+<h2><span class="n">10</span>측정으로 확인한 것</h2>
+<table class="tbl">
+<tr><th>항목</th><th>값</th><th>뜻</th></tr>
+<tr><td>라이다 반복 정밀도</td><td class="num">1.6 mm</td><td>같은 점을 다시 재도 이만큼만 흔들린다</td></tr>
+<tr><td>다리 중심 추정</td><td class="num">0.4~0.5 mm</td><td>1 m 거리, 점 10~19개 평균</td></tr>
+<tr><td>규격 대조 오차</td><td class="num">2.7 mm</td><td>실측값으로 등록했을 때 (도면값이면 95 mm)</td></tr>
+<tr><td>인식률</td><td class="num">100 %</td><td>119/119 프레임, 뒤바뀜 0회</td></tr>
+<tr><td>대차 크기 흔들림</td><td class="num">±0.6~2.3 mm</td><td>고정 반지름 보정 기준</td></tr>
+<tr><td>방향 흔들림</td><td class="num">±0.07°</td><td>변에서 구한 값. 주성분이면 ±101°</td></tr>
+<tr><td>위치 흔들림</td><td class="num">±1 mm</td><td>앞뒤·좌우</td></tr>
+<tr><td>카메라 검증</td><td class="num">4/4</td><td>적중비 0.67~1.00</td></tr>
+<tr><td>카메라 장착각</td><td class="num">−6.37° / 12° 숙임</td><td>⚠ 임시값 — 마운트 정렬 후 원복</td></tr>
+<tr><td>도킹 어긋남 좌표 보정</td><td class="num">53 mm</td><td>라이다 기준 → 차체 기준</td></tr>
+</table>
+<div class="note"><span class="t">이 절차는 정렬을 다시 맞추는 도구이기도 하다</span>
+<p>같은 대차를 라이다와 카메라로 동시에 보므로, 카메라를 다시 달거나 위치가
+틀어지면 같은 방법으로 각도를 재서 보정할 수 있다. 2026-08-28 에 실제로
+이 방법으로 카메라 좌우각과 숙임각을 다시 쟀다.</p>
+<p>다만 <strong>배경이 복잡한 장면에서는 뎁스 자동 대조를 믿으면 안 된다</strong> —
+엉뚱한 특징을 잡는다. 대차 하나만 정면에 홀로 두고 할 것.</p></div>
+
+</div>

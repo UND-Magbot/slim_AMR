@@ -1,0 +1,43 @@
+# LDS-50C-E-12  (bluesea2 드라이버)
+# 기본 제공 udp_lidar.yaml 에서 frame_id 만 우리 URDF 에 맞게 고친 것.
+bluesea_node:
+  ros__parameters:
+    # 2026-10-26: 이 라이다(enp2s0)는 앞 왼쪽 (앞뒤 뒤집은 뒤). 합친 스캔은 scan_merger 가 /scan.
+    frame_id: "laser_front"
+    scan_topic: "scan_front"
+    cloud_topic: "cloud"
+    dev_id: -1
+    raw_bytes: 3
+    output_360: true
+    output_scan: true
+    output_cloud2: false
+    with_angle_filter: false
+    min_angle: -3.1415926
+    max_angle: 3.1415926
+    hard_resample: false
+    soft_resample: false
+    with_checksum: true
+    reversed: false
+    min_dist: 0.05
+    max_dist: 40.0
+    error_circle: 3
+    error_scale: 0.9
+    log_enable: false
+    log_path: "/tmp/ros2_log.txt"
+    type: "udp"
+    lidar_ip: "192.168.158.98"
+    lidar_port: 6543
+    local_port: 6668
+    group_ip: "224.1.2.3"
+    uuid: -1
+    resample_res: -1.0
+    with_confidence: -1
+    with_smooth: -1
+    with_deshadow: -1
+    alarm_msg: -1
+    rpm: -1
+    direction: -1
+    ats: -1
+    ntp_ip: "192.168.158.50"
+    ntp_port: 5678
+    ntp_enable: -1

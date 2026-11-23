@@ -1,0 +1,33 @@
+{
+    "configurations": [
+        {
+            "name": "STM32H743",
+            "compilerPath": "/usr/local/bin/arm-none-eabi-gcc",
+            "compilerArgs": [
+                "-mcpu=cortex-m7", "-mthumb", "-mfpu=fpv5-d16", "-mfloat-abi=hard"
+            ],
+            "cStandard": "gnu11",
+            "intelliSenseMode": "linux-gcc-arm",
+            "defines": [
+                "USE_PWR_LDO_SUPPLY",
+                "USE_HAL_DRIVER",
+                "STM32H743xx",
+                "STM32_THREAD_SAFE_STRATEGY=2",
+                "DEBUG"
+            ],
+            "includePath": [
+                "\/Core/Inc",
+                "\/Core/ThreadSafe",
+                "\/Drivers/STM32H7xx_HAL_Driver/Inc",
+                "\/Drivers/STM32H7xx_HAL_Driver/Inc/Legacy",
+                "\/Drivers/CMSIS/Device/ST/STM32H7xx/Include",
+                "\/Drivers/CMSIS/Include",
+                "\/USB_DEVICE/App",
+                "\/USB_DEVICE/Target",
+                "\/Middlewares/ST/STM32_USB_Device_Library/Core/Inc",
+                "\/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc"
+            ]
+        }
+    ],
+    "version": 4
+}

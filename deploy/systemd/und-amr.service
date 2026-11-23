@@ -1,0 +1,28 @@
+[Unit]
+Description=UND_AMR 로봇관리자 (웹 UI · SLAM · 센서 · 모터)
+Documentation=file:///home/und_amr1/projects/UND_AMR/docs/인수인계_2026-11-23.md
+# 라이다가 유선 고정 IP(192.168.158.15)로 붙으므로 망이 올라온 뒤에 띄운다.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=und_amr1
+Group=und_amr1
+SupplementaryGroups=dialout
+Environment=ROS_DOMAIN_ID=42
+Environment=HOME=/home/und_amr1
+WorkingDirectory=/home/und_amr1/projects/UND_AMR
+ExecStart=/home/und_amr1/projects/UND_AMR/tools/robot_service.sh
+# 로그는 기존 도구들이 보던 자리에 그대로 남긴다.
+StandardOutput=append:/home/und_amr1/projects/UND_AMR/logs/bringup.log
+StandardError=append:/home/und_amr1/projects/UND_AMR/logs/bringup.log
+# 죽으면 다시 띄운다. 센서가 늦게 올라와 실패하는 경우가 있다.
+Restart=always
+RestartSec=10
+# 종료할 때 자식(노드들)까지 같이 정리한다.
+KillMode=control-group
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+[Unit]
+Description=UND_AMR 자율주행 (nav2)
+# bringup 이 먼저 떠야 한다. 지도·위치추정·좌표계가 다 그쪽에서 나온다.
+After=und-amr.service
+Requires=und-amr.service
+# PartOf 가 핵심이다. und-amr 을 껐다 켜면 이 서비스도 같이 껐다 켜진다.
+# nav2 는 앞단 좌표계가 끊기면 스스로 회복하지 못하므로(2026-09-11),
+# 사람이 순서를 기억하는 대신 systemd 가 챙기게 한다.
+PartOf=und-amr.service
+
+[Service]
+Type=simple
+User=und_amr1
+Group=und_amr1
+Environment=ROS_DOMAIN_ID=42
+Environment=HOME=/home/und_amr1
+WorkingDirectory=/home/und_amr1/projects/UND_AMR
+ExecStart=/home/und_amr1/projects/UND_AMR/tools/nav2_service.sh
+StandardOutput=append:/home/und_amr1/projects/UND_AMR/logs/nav2.log
+StandardError=append:/home/und_amr1/projects/UND_AMR/logs/nav2.log
+Restart=always
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=20
+
+[Install]
+# multi-user.target 이 아니라 und-amr.service 에 건다.
+# PartOf 는 정지·재시작만 전파하고 '시작' 은 전파하지 않는다. 여기에 걸어야
+# und-amr 이 뜰 때 nav2 도 같이 딸려 온다(2026-09-14 확인).
+WantedBy=und-amr.service
