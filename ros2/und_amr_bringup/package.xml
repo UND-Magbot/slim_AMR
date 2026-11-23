@@ -3,7 +3,7 @@
   <name>und_amr_bringup</name>
   <version>0.1.0</version>
   <description>UND_AMR 2륜 차동구동 로봇 브링업 (STM32 구동부 + LDS-50C-E 라이다 + D435i)</description>
-  <maintainer email="undforbidding@gmail.com">und_amr1</maintainer>
+  <maintainer email="unde5466@gmail.com">UND-Magbot</maintainer>
   <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>

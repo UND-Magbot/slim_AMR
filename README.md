@@ -12,6 +12,6 @@
 | `tools/` | 기동 스크립트(systemd 가 호출), 펌웨어 콘솔(`fw_cmd.py`), 측정 도구, 회귀 시험(`run_tests.sh`) |
 | `tools/analysis/` | 일회성 측정·분석 스크립트 모음 |
 | `deploy/` | systemd 유닛, sysctl 설정 정본 |
-| `docs/` | 인수인계, 일일업무보고, 설명서 |
+| `docs/` | 인수인계(md·pptx), 설명서 |
 
 지도(`~/ros2_ws/maps/`)와 로그(`logs/`)는 git 밖이다.

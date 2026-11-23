@@ -17,8 +17,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='und_amr1',
-    maintainer_email='undforbidding@gmail.com',
+    maintainer='UND-Magbot',
+    maintainer_email='unde5466@gmail.com',
     description='UND_AMR bringup',
     license='MIT',
     entry_points={
